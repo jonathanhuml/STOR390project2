@@ -1,0 +1,91 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(readxl)
+ratings <- read_excel("/Users/juanhuml/Desktop/STOR 390/Data/Efficiencies.xlsx") %>% na.omit() %>%
+  separate(TEAM, c("name", "conf"), ",")
+power <- read_excel("/Users/juanhuml/Desktop/STOR 390/Data/PowerRankings.xlsx") %>% na.omit() %>% separate(team, c("name", "conference"), ",")
+
+power_efficiency <- left_join(ratings, power, by = "name") %>% mutate(avg_rank = (rank + ranking)/2) %>% select(avg_rank, name, conf)
+power_efficiency
+
+#write.csv(power_efficiency, file = 'aggregate_power_rankings.csv')
+
+```
+
+
+```{r}
+library(readr)
+GameResults <- read_csv("/Users/juanhuml/Desktop/STOR 390/Data/GameResults.csv")
+GameResults <- GameResults[GameResults$Season == "2019-20",]
+head(GameResults)
+SeasonResults <- read_csv("/Users/juanhuml/Desktop/STOR 390/pygamedata.csv")
+head(SeasonResults)
+
+total <- left_join(GameResults, SeasonResults, by = c("Home Team" = "name"))
+
+total2 <- left_join(total, SeasonResults, by = c("Visitor Team" = "name"))
+
+games <- na.omit(total2) %>% select(c(Result, conference.x, conference.y, points_against_per_game.x, points_per_game.x, simple_rating_system.x, strength_of_schedule.x, turnovers.x, win_percentage.x, yards_per_play.x, points_against_per_game.y, points_per_game.y, simple_rating_system.y, strength_of_schedule.y, turnovers.y, win_percentage.y, yards_per_play.y))
+
+#Season, "Season Type", Date, "Home Score", "Visitor Score", "Spread", "Total", "Home Team", "Visitor Team"
+
+games
+```
+
+```{r}
+##logistic regression
+set.seed(42069)
+library(caret)
+Train <- createDataPartition(games$Result, p=0.6, list=FALSE)
+training <- games[ Train, ]
+testing <- games[ -Train, ]
+
+mod_fit <- train(Result ~ .,  data=training, method="glm", family="binomial", maxit = 10000)
+
+pred = predict(mod_fit, newdata=testing)
+actual <- as.data.frame(testing["Result"])
+#accuracy <- table(pred, testing["Result",])
+prediction <- as_data_frame(pred)
+#sum(diag(accuracy))/sum(accuracy)
+act_pred <- cbind(actual, prediction)
+
+count = 0
+for (i in seq_len(nrow(act_pred))) {
+  
+  if(act_pred[i,1] == act_pred[i,2]){
+    count = count+1
+  }
+}
+count/nrow(act_pred)
+```
+
+
+```{r}
+library(caret)
+library(xgboost)
+fitControl <- trainControl(method = "repeatedcv", number = 10, repeats = 10, search = "random")
+model <- train(factor(Result)~., data = training, method = "xgbTree", trControl = fitControl)
+
+xgboost_prediction <- predict.train(model, newdata = testing)
+print(xgboost_prediction)
+
+accuracies <- cbind(xgboost_prediction, actual)
+accuracies
+
+count = 0
+for (i in seq_len(nrow(accuracies))) {
+  
+  if(accuracies[i,1] == accuracies[i,2]){
+    count = count+1
+  }
+}
+count/nrow(accuracies)
+```
+
+
